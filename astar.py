@@ -1,16 +1,17 @@
+# Author Sven Koppany
+
+# This implements the a-star search algorithm
+
+
 import numpy as np
 import scipy.io
 import random
-import math
-import Queue
-
-#import cv2
 
 from matplotlib import pyplot as plt
 from matplotlib import animation
 
 class astar:
-	def __init__(self, worldMap, matlabMap = True, startAndGoalCoords = ((0,0),(4,4)), randomCoords = False):
+	def __init__(self, worldMap, matlabMap = False, startAndGoalCoords = ((0,0),(4,4)), randomCoords = False):
 		#Convert the matlab map to a numpy array
 		if matlabMap == True:
 			self.worldMap = np.asanyarray(scipy.io.loadmat(worldMap)['grid'])
@@ -28,7 +29,7 @@ class astar:
 		else:
 			self.startAndGoalCoords = startAndGoalCoords
 
-		self.__getAStarPath()
+		self.path = self.getAStarPath()
 
 	def getRandomLocations(self):
 		#
@@ -48,133 +49,118 @@ class astar:
 
 		return (startLoc, goalLoc)
 
-	def __getAStarPath(self):
+	def getAStarPath(self):
 
-		self.success = True #set to true if no path found
+		world = self.worldMap #world map
+		start = self.startAndGoalCoords[0] #starting location
+		goal = self.startAndGoalCoords[1] #goal location
 
-		st = self.startAndGoalCoords[0]
-		gl = self.startAndGoalCoords[1]
+		closed = [] #closed cells
+		frontier = {} #open cells with g-values
+		frontier_f = {} # dict of f-values
+		cameFrom = {}
 
-		self.path = [st]
-		path = self.path
+		moveCost = 1
 
-		m = self.worldMap
+		def heuristicManh(cell): #the heuristic using Manhattan movement
+			return abs(cell[0] - goal[0]) + abs(cell[1] - goal[1]) * moveCost
 
-		#build heuristic from target
-		h = np.zeros(m.shape)
-		for y, r in enumerate(h):
-			for x, v in enumerate(r): 
-				h[y,x] = math.fabs(y - gl[0]) + math.fabs(x - gl[1])
+		def fValue(cell):
+			return frontier[cell] + heuristicManh(cell)
 
-		def expand():
-			#get the current a last steps from path
-			y, x = path[-1]
-			yLimit = m.shape[0]
-			xLimit = m.shape[1]
-
+		def expandManh(cell): #expand with Manhattan movement
+			limitY, limitX = world.shape #get the map limits
+			cY, cX = cell #get the node coords
 			options = []
 
-			if len(path) > 1:
-				last = path[-2]
-			else:
-				last = path[-1]
-
-			if y+1 < yLimit and m[y+1,x] == 0:# and (y+1,x) != last:
-				options.append((y+1,x))
-			if x+1 < xLimit and m[y,x+1] == 0:# and (y,x+1) != last:
-				options.append((y,x+1))
-			if y-1 >= 0 and m[y-1,x] == 0:# and (y-1,x) != last:
-				options.append((y-1,x))
-			if x-1 >= 0 and m[y,x-1] == 0:# and (y,x-1) != last:
-				options.append((y,x-1))
+			if cY - 1 >= 0 and world[(cY - 1, cX)] == 0:
+				options.append((cY - 1, cX))
+			if cY + 1 < limitY and world[(cY + 1, cX)] == 0:
+				options.append((cY + 1, cX))
+			if cX - 1 >= 0 and world[(cY, cX - 1)] == 0:
+				options.append((cY, cX - 1))
+			if cX + 1 < limitX and world[(cY, cX + 1)] == 0:
+				options.append((cY, cX + 1))
 
 			return options
 
-		#build a path until the goal is reached or failure
-		while True:
-			opts = expand()
+		def buildPath(cell):
+			current = cell
+			path = [cell]
 
-			#the g-value is the path index
-			g = len(path) - 1
+			#Find the path from current(goal) back to start
+			while current != start:
+				current = cameFrom[current]
+				path.append(current)
 
-			if opts == []:
-				self.success = False
-				break
+			return path
 
-			#find the f-values of all expansions
-			f = np.array([])
-			for i, v in enumerate(opts):
-				f = np.append(f, g + h[v])
+		#Put the starting cell into frontier, 
+		#	g-value = 0, f-value = h + g
+		frontier[start] = 0
+		frontier_f[fValue(start)] = [start] #cal f-value and store it
 
-			#find the lowest and add it to the path
-			nextStep = opts[np.argmin(f)]
-			path.append(nextStep)
+		while bool(frontier): #while frontier is not empty
 
-			#if goal reached?
-			if gl == nextStep:
-				break
+			#set current to the minimum f-value
+			current = min(frontier_f.items(), key=lambda x: x[0])
 
-		return
+			#save the lowest f-value and the current cell coords
+			lowF = current[0]
+			cell = current[1][0]
 
-	def astar(start, goal):
-		frontier = Queue.Queue()
-		frontier.put(start)
-		visited = {}
-		visited[start] = True
+			#if the goal has been reached, find the shortest path
+			if cell == goal:
+				return buildPath(cell)
 
-		while not frontier.empty():
-		   current = frontier.get()
-		   for next in graph.neighbors(current):
-		      if next not in visited:
-		         frontier.put(next)
-		         visited[next] = True
+			#iterate through the neighbors
+			neighbors = expandManh(cell)
+			for i, v in enumerate(neighbors):
 
-		# closedset := the empty set    // The set of nodes already evaluated.
-	 #    openset := {start}    // The set of tentative nodes to be evaluated, initially containing the start node
-	 #    came_from := the empty map    // The map of navigated nodes.
-	 
-	 #    g_score := map with default value of Infinity
-	 #    g_score[start] := 0    // Cost from start along best known path.
-	 #    // Estimated total cost from start to goal through y.
-	 #    f_score = map with default value of Infinity
-	 #    f_score[start] := g_score[start] + heuristic_cost_estimate(start, goal)
-	     
-	 #    while openset is not empty
-	 #        current := the node in openset having the lowest f_score[] value
-	 #        if current = goal
-	 #            return reconstruct_path(came_from, goal)
-	         
-	 #        remove current from openset
-	 #        add current to closedset
-	 #        for each neighbor in neighbor_nodes(current)
-	 #            if neighbor in closedset
-	 #                continue
-	 #            tentative_g_score := g_score[current] + dist_between(current,neighbor)
-	 
-	 #            if neighbor not in openset or tentative_g_score < g_score[neighbor] 
-	 #                came_from[neighbor] := current
-	 #                g_score[neighbor] := tentative_g_score
-	 #                f_score[neighbor] := g_score[neighbor] + heuristic_cost_estimate(neighbor, goal)
-	 #                if neighbor not in openset
-	 #                    add neighbor to openset
-	 
-	 #    return failure
+				#skip closed cells
+				if v in closed:
+					continue
+
+				#next g-value
+				gScore = frontier[cell] + moveCost
+
+				#if the neighbor is not in the open frontier
+				if v not in frontier.keys():
+
+					#record its parent
+					cameFrom[v] = cell
+
+					#record the g-val and f-val
+					frontier[v] = gScore
+					fScore = fValue(v)
+					if fScore not in frontier_f.keys():
+						frontier_f[fScore] = [v]
+					else:
+						frontier_f[fScore].append(v)
+
+			#move current cell to closed
+			closed.append(cell)
+			del frontier[cell]
+			frontier_f[lowF].remove(cell)
+			if frontier_f[lowF] == []:
+				del frontier_f[lowF]
+
+		return False
 
 if __name__ == '__main__':
 
-	#import map from MatLab and get limits
-	astarPath = astar(worldMap = 'staticMap_254.mat', matlabMap = True, startAndGoalCoords = ((20, 20),(975, 263)))
-	print astarPath.success
+	#import map from MatLab 
+	# sometimes this times out
+	#astarPath = astar(worldMap = 'staticMap_254.mat', matlabMap = True, startAndGoalCoords = ((20, 20),(500, 500)))
+
+	#simple example
+	world = np.array([[0,0,0,0,1,0],
+						[0,0,0,0,1,0],
+						[0,0,0,0,1,0],
+						[0,1,1,1,1,0],
+						[0,0,0,1,0,0],
+						[0,0,0,0,0,0]])
+	astarPath = astar(worldMap = world, matlabMap = False, startAndGoalCoords = ((3,5),(1,2)))
 	print astarPath.path
-
-	#ceate an image of the path
-	#for i, v in enumerate(astartPath.path):
-	#	astarPath.worldMap[v] = 128
-
-	#cv2.imwrite('path.jpg', astarPath.worldMap)
-
-
-
-
 
 
